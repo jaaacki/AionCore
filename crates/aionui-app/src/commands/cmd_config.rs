@@ -498,6 +498,16 @@ async fn run_mcp(client: &reqwest::Client, args: ConfigMcpArgs) -> Result<(), Co
             )
             .await
         }
+        ConfigMcpCommand::CallProof => {
+            run_payload_request(
+                client,
+                "config mcp call-proof",
+                Method::POST,
+                "/api/mcp/call-proof",
+                true,
+            )
+            .await
+        }
         ConfigMcpCommand::AgentConfigs => {
             run_no_input_request(
                 client,

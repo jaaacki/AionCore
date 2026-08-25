@@ -9,8 +9,9 @@ use axum::routing::{get, post};
 
 use aionui_api_types::{
     ApiResponse, BatchImportMcpServersRequest, CreateMcpServerRequest, DetectedMcpServerResponse, ErrorResponse,
-    McpConnectionTestErrorCode, McpServerResponse, OAuthCheckStatusRequest, OAuthLoginRequest, OAuthLoginResponse,
-    OAuthLogoutRequest, OAuthStatusResponse, TestMcpConnectionRequest, UpdateMcpServerRequest,
+    McpCallProofErrorCode, McpCallProofRequest, McpConnectionTestErrorCode, McpServerResponse, OAuthCheckStatusRequest,
+    OAuthLoginRequest, OAuthLoginResponse, OAuthLogoutRequest, OAuthStatusResponse, TestMcpConnectionRequest,
+    UpdateMcpServerRequest,
 };
 use aionui_auth::CurrentUser;
 use aionui_common::ApiError;
@@ -71,6 +72,7 @@ pub fn mcp_routes(state: McpRouterState) -> Router {
         .route("/api/mcp/servers/{id}/toggle", post(toggle_server))
         // Connection test route
         .route("/api/mcp/test-connection", post(test_connection))
+        .route("/api/mcp/call-proof", post(call_proof))
         // Agent config discovery route
         .route("/api/mcp/agent-configs", get(get_agent_configs))
         // OAuth routes
@@ -238,6 +240,65 @@ async fn test_connection(
         Json(ErrorResponse::new_with_details(error, code, result.details.clone())),
     )
         .into_response())
+}
+
+/// `POST /api/mcp/call-proof` — perform one exact, advertised read-only MCP tool call.
+///
+/// The temporary transport credentials and tool payload never appear in the
+/// response. Success returns only bounded hashes and counts suitable for an
+/// external provenance attestor.
+async fn call_proof(
+    State(state): State<McpRouterState>,
+    Extension(user): Extension<CurrentUser>,
+    body: Result<Json<McpCallProofRequest>, JsonRejection>,
+) -> Result<Response, ApiError> {
+    let Json(req) = body.map_err(ApiError::from)?;
+    let transport = McpServerTransport::from(req.transport);
+    match state
+        .connection_test_service
+        .call_proof(
+            &req.name,
+            &transport,
+            &req.tool,
+            req.arguments,
+            &user.id,
+            req.runtime_scope_id.as_deref(),
+        )
+        .await
+    {
+        Ok(proof) => Ok(Json(ApiResponse::ok(proof)).into_response()),
+        Err(error) => Ok((
+            call_proof_failure_status(error.code()),
+            Json(ErrorResponse::new_with_details(
+                error.message(),
+                error.code().as_str(),
+                Some(error.details()),
+            )),
+        )
+            .into_response()),
+    }
+}
+
+fn call_proof_failure_status(code: McpCallProofErrorCode) -> StatusCode {
+    match code {
+        McpCallProofErrorCode::InvalidRequest => StatusCode::BAD_REQUEST,
+        McpCallProofErrorCode::ArgumentsTooLarge | McpCallProofErrorCode::ResponseTooLarge => {
+            StatusCode::PAYLOAD_TOO_LARGE
+        }
+        McpCallProofErrorCode::CommandNotFound
+        | McpCallProofErrorCode::CommandPermissionDenied
+        | McpCallProofErrorCode::CommandStartFailed
+        | McpCallProofErrorCode::ProcessCleanupFailed
+        | McpCallProofErrorCode::ToolNotFound
+        | McpCallProofErrorCode::ToolNotReadOnly => StatusCode::UNPROCESSABLE_ENTITY,
+        McpCallProofErrorCode::Timeout => StatusCode::GATEWAY_TIMEOUT,
+        McpCallProofErrorCode::ConnectionFailed
+        | McpCallProofErrorCode::HttpError
+        | McpCallProofErrorCode::RedirectRejected
+        | McpCallProofErrorCode::RpcError
+        | McpCallProofErrorCode::ProtocolError
+        | McpCallProofErrorCode::ToolCallFailed => StatusCode::BAD_GATEWAY,
+    }
 }
 
 fn connection_test_failure_status(code: McpConnectionTestErrorCode) -> StatusCode {

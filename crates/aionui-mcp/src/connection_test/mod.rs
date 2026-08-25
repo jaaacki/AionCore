@@ -1,3 +1,5 @@
+mod call_proof;
+pub use call_proof::McpCallProofFailure;
 mod protocol;
 
 use std::collections::HashMap;
@@ -45,14 +47,20 @@ const CONNECTION_TIMEOUT: Duration = Duration::from_secs(30);
 #[derive(Clone)]
 pub struct McpConnectionTestService {
     http_client: reqwest::Client,
+    proof_http_client: reqwest::Client,
     timeout: Duration,
     broadcaster: Arc<dyn EventBroadcaster>,
 }
 
 impl McpConnectionTestService {
     pub fn new(http_client: reqwest::Client, broadcaster: Arc<dyn EventBroadcaster>) -> Self {
+        let proof_http_client = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .expect("static no-redirect HTTP client configuration should build");
         Self {
             http_client,
+            proof_http_client,
             timeout: CONNECTION_TIMEOUT,
             broadcaster,
         }

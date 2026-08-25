@@ -98,6 +98,7 @@ pub(crate) fn data() -> Value {
                 stdin_redacted(&["mcp", "servers", "toggle"], "Toggle an MCP server.", &["server_id"], &[], true, false, &["transport.headers", "transport.env"]),
                 stdin_redacted(&["mcp", "servers", "import"], "Import MCP servers.", &["servers"], &[], true, false, &["transport.headers", "transport.env"]),
                 stdin_redacted(&["mcp", "test-connection"], "Test an MCP server configuration.", &["name", "transport"], &[], false, false, &["transport.headers", "transport.env"]),
+                stdin_redacted(&["mcp", "call-proof"], "Call one exact MCP tool that the server declares read-only and return payload-free proof.", &["name", "transport", "tool", "arguments"], &[], false, true, &["transport.headers", "transport.env", "arguments"]),
                 no_input_redacted(&["mcp", "agent-configs"], "List agent MCP config state.", false, &["transport.headers", "transport.env"]),
                 stdin_redacted(&["mcp", "oauth", "check-status"], "Check MCP OAuth status.", &["server_url"], &[], false, false, &[]),
                 stdin_redacted(&["mcp", "oauth", "login"], "Start MCP OAuth login.", &["server_url"], &[], true, false, &[]),
