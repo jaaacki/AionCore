@@ -250,6 +250,9 @@ pub struct McpCallProofRequest {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct McpCallProofResult {
     pub protocol_version: String,
+    pub server_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runtime_scope_id: Option<String>,
     pub tool: String,
     pub authenticated_subject_sha256: String,
     pub arguments_sha256: String,

@@ -116,7 +116,14 @@ impl McpConnectionTestService {
         runtime_scope_id: Option<&str>,
     ) -> CallProofResult<McpCallProofResult> {
         let transport_type = transport_type(transport);
-        let prepared = PreparedCall::new(name, tool, arguments, authenticated_user_id, transport_type)?;
+        let prepared = PreparedCall::new(
+            name,
+            tool,
+            arguments,
+            authenticated_user_id,
+            runtime_scope_id,
+            transport_type,
+        )?;
         match transport {
             McpServerTransport::Stdio { command, args, env } => {
                 self.call_proof_stdio(command, args, env, &prepared, authenticated_user_id, runtime_scope_id)
@@ -443,6 +450,7 @@ struct PreparedCall {
     arguments: Value,
     arguments_bytes: Vec<u8>,
     authenticated_subject_sha256: String,
+    runtime_scope_id: Option<String>,
 }
 
 impl PreparedCall {
@@ -451,6 +459,7 @@ impl PreparedCall {
         tool: &str,
         arguments: Value,
         authenticated_user_id: &str,
+        runtime_scope_id: Option<&str>,
         transport: &'static str,
     ) -> CallProofResult<Self> {
         if name.is_empty()
@@ -487,6 +496,7 @@ impl PreparedCall {
             arguments,
             arguments_bytes,
             authenticated_subject_sha256: sha256(authenticated_user_id.as_bytes()),
+            runtime_scope_id: runtime_scope_id.map(str::to_owned),
         })
     }
 }
@@ -804,6 +814,7 @@ fn build_proof(
     let proof_bytes = serde_json::to_vec(&json!({
         "protocol_version": protocol_version,
         "server_name": prepared.server_name,
+        "runtime_scope_id": prepared.runtime_scope_id,
         "tool": prepared.tool,
         "authenticated_subject_sha256": prepared.authenticated_subject_sha256,
         "arguments_sha256": arguments_sha256,
@@ -813,6 +824,8 @@ fn build_proof(
     .expect("proof tuple should serialize");
     Ok(McpCallProofResult {
         protocol_version,
+        server_name: prepared.server_name.clone(),
+        runtime_scope_id: prepared.runtime_scope_id.clone(),
         tool: prepared.tool.clone(),
         authenticated_subject_sha256: prepared.authenticated_subject_sha256.clone(),
         arguments_sha256,

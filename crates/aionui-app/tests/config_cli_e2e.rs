@@ -182,6 +182,8 @@ async fn fake_mcp_call_proof(
         "success": true,
         "data": {
             "protocol_version": "2024-11-05",
+            "server_name": "pc-tools-qualification-iqr_test",
+            "runtime_scope_id": "iqr_test",
             "tool": "read_exact",
             "authenticated_subject_sha256": "sha256:subject",
             "arguments_sha256": "sha256:args",
@@ -1209,5 +1211,7 @@ async fn config_mcp_call_proof_posts_exact_request_and_prints_only_proof() {
     assert!(!stdout_text.contains("CLI_HEADER_SECRET"));
     let stdout: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(stdout["data"]["tool"], "read_exact");
+    assert_eq!(stdout["data"]["server_name"], "pc-tools-qualification-iqr_test");
+    assert_eq!(stdout["data"]["runtime_scope_id"], "iqr_test");
     assert_eq!(stdout["data"]["proof_sha256"], "sha256:proof");
 }
