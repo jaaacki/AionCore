@@ -17,7 +17,7 @@ pub use adapters::{
     AionrsAdapter, AionuiAdapter, ClaudeAdapter, CodeBuddyAdapter, CodexAdapter, GeminiAdapter, OpencodeAdapter,
     QwenAdapter,
 };
-pub use connection_test::McpConnectionTestService;
+pub use connection_test::{McpCallProofFailure, McpConnectionTestService};
 pub use error::McpError;
 pub use oauth_service::McpOAuthService;
 pub use routes::{McpRouterState, mcp_routes};

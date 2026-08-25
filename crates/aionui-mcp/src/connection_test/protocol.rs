@@ -16,7 +16,7 @@ use std::time::Duration;
 // Constants
 // ---------------------------------------------------------------------------
 
-const PROTOCOL_VERSION: &str = "2024-11-05";
+pub(super) const PROTOCOL_VERSION: &str = "2024-11-05";
 const CLIENT_NAME: &str = "aionui-mcp-test";
 const CLIENT_VERSION: &str = "1.0.0";
 
@@ -178,6 +178,34 @@ async fn read_jsonrpc_response(reader: &mut BufReader<tokio::process::ChildStdou
 // ---------------------------------------------------------------------------
 // SSE helpers
 // ---------------------------------------------------------------------------
+
+/// Read SSE events while enforcing a hard bound on any unparsed event.
+pub(super) async fn read_sse_events_bounded(
+    mut resp: reqwest::Response,
+    tx: mpsc::Sender<Result<SseEvent, ()>>,
+    max_event_bytes: usize,
+) {
+    let mut buffer = String::new();
+    loop {
+        match resp.chunk().await {
+            Ok(Some(chunk)) => {
+                let text = String::from_utf8_lossy(&chunk);
+                buffer.push_str(&text.replace("\r\n", "\n"));
+                while let Some(event) = parse_next_sse_event(&mut buffer) {
+                    if event.data.len() > max_event_bytes || tx.send(Ok(event)).await.is_err() {
+                        let _ = tx.send(Err(())).await;
+                        return;
+                    }
+                }
+                if buffer.len() > max_event_bytes {
+                    let _ = tx.send(Err(())).await;
+                    return;
+                }
+            }
+            Ok(None) | Err(_) => return,
+        }
+    }
+}
 
 /// Read SSE events from a streaming HTTP response and forward via channel.
 pub(super) async fn read_sse_events(mut resp: reqwest::Response, tx: mpsc::Sender<SseEvent>) {

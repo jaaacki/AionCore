@@ -123,9 +123,11 @@ pub use file::{
 pub use lifecycle::{GitHubReleaseAsset, SystemInfoResponse, UpdateCheckRequest, UpdateCheckResult, UpdateReleaseInfo};
 pub use mcp::{
     BatchImportMcpServersRequest, CreateMcpServerRequest, DetectedMcpServerEntry, DetectedMcpServerResponse,
-    ImportMcpServerRequest, McpAuthMethod, McpConnectionTestErrorCode, McpConnectionTestResult, McpServerResponse,
-    McpToolResponse, McpTransport, OAuthCheckStatusRequest, OAuthLoginRequest, OAuthLoginResponse, OAuthLogoutRequest,
-    OAuthStatusResponse, TestMcpConnectionRequest, UpdateMcpServerRequest,
+    ImportMcpServerRequest, MCP_CALL_PROOF_MAX_ARGUMENT_BYTES, MCP_CALL_PROOF_MAX_NAME_BYTES,
+    MCP_CALL_PROOF_MAX_RESPONSE_BYTES, McpAuthMethod, McpCallProofErrorCode, McpCallProofRequest, McpCallProofResult,
+    McpConnectionTestErrorCode, McpConnectionTestResult, McpServerResponse, McpToolResponse, McpTransport,
+    OAuthCheckStatusRequest, OAuthLoginRequest, OAuthLoginResponse, OAuthLogoutRequest, OAuthStatusResponse,
+    TestMcpConnectionRequest, UpdateMcpServerRequest,
 };
 pub use office::{
     CellCoord, CellRange, ConversionResultDto, ConversionTarget, DocumentConversionRequest, DocumentConversionResponse,

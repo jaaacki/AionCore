@@ -221,6 +221,95 @@ pub struct McpConnectionTestResult {
 }
 
 // ---------------------------------------------------------------------------
+// F. Exact read-only tool call proof
+// ---------------------------------------------------------------------------
+
+/// Maximum UTF-8 byte length accepted for MCP server and tool names.
+pub const MCP_CALL_PROOF_MAX_NAME_BYTES: usize = 256;
+/// Maximum compact-JSON byte length accepted for one tool argument object.
+pub const MCP_CALL_PROOF_MAX_ARGUMENT_BYTES: usize = 64 * 1024;
+/// Maximum JSON-RPC response body/event/line accepted from the MCP server.
+pub const MCP_CALL_PROOF_MAX_RESPONSE_BYTES: usize = 1024 * 1024;
+
+/// Request body for `POST /api/mcp/call-proof`.
+///
+/// The transport may contain credentials used only for the temporary connection.
+/// Neither those credentials nor `arguments` are reflected in the response.
+#[derive(Debug, Deserialize)]
+pub struct McpCallProofRequest {
+    pub name: String,
+    pub transport: McpTransport,
+    pub tool: String,
+    #[serde(default = "empty_json_object")]
+    pub arguments: serde_json::Value,
+    #[serde(default)]
+    pub runtime_scope_id: Option<String>,
+}
+
+/// Bounded, payload-free evidence from an exact read-only MCP tool call.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct McpCallProofResult {
+    pub protocol_version: String,
+    pub tool: String,
+    pub authenticated_subject_sha256: String,
+    pub arguments_sha256: String,
+    pub tools_sha256: String,
+    pub result_sha256: String,
+    pub proof_sha256: String,
+    pub result_bytes: usize,
+    pub content_items: usize,
+}
+
+/// Machine-readable failure code for exact MCP call proof generation.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum McpCallProofErrorCode {
+    InvalidRequest,
+    ArgumentsTooLarge,
+    ResponseTooLarge,
+    CommandNotFound,
+    CommandPermissionDenied,
+    CommandStartFailed,
+    ProcessCleanupFailed,
+    ConnectionFailed,
+    HttpError,
+    RedirectRejected,
+    Timeout,
+    RpcError,
+    ProtocolError,
+    ToolNotFound,
+    ToolNotReadOnly,
+    ToolCallFailed,
+}
+
+impl McpCallProofErrorCode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::InvalidRequest => "MCP_CALL_PROOF_INVALID_REQUEST",
+            Self::ArgumentsTooLarge => "MCP_CALL_PROOF_ARGUMENTS_TOO_LARGE",
+            Self::ResponseTooLarge => "MCP_CALL_PROOF_RESPONSE_TOO_LARGE",
+            Self::CommandNotFound => "MCP_CALL_PROOF_COMMAND_NOT_FOUND",
+            Self::CommandPermissionDenied => "MCP_CALL_PROOF_COMMAND_PERMISSION_DENIED",
+            Self::CommandStartFailed => "MCP_CALL_PROOF_COMMAND_START_FAILED",
+            Self::ProcessCleanupFailed => "MCP_CALL_PROOF_PROCESS_CLEANUP_FAILED",
+            Self::ConnectionFailed => "MCP_CALL_PROOF_CONNECTION_FAILED",
+            Self::HttpError => "MCP_CALL_PROOF_HTTP_ERROR",
+            Self::RedirectRejected => "MCP_CALL_PROOF_REDIRECT_REJECTED",
+            Self::Timeout => "MCP_CALL_PROOF_TIMEOUT",
+            Self::RpcError => "MCP_CALL_PROOF_RPC_ERROR",
+            Self::ProtocolError => "MCP_CALL_PROOF_PROTOCOL_ERROR",
+            Self::ToolNotFound => "MCP_CALL_PROOF_TOOL_NOT_FOUND",
+            Self::ToolNotReadOnly => "MCP_CALL_PROOF_TOOL_NOT_READ_ONLY",
+            Self::ToolCallFailed => "MCP_CALL_PROOF_TOOL_CALL_FAILED",
+        }
+    }
+}
+
+fn empty_json_object() -> serde_json::Value {
+    serde_json::Value::Object(serde_json::Map::new())
+}
+
+// ---------------------------------------------------------------------------
 // G. OAuth
 // ---------------------------------------------------------------------------
 

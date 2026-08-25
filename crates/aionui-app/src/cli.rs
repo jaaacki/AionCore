@@ -409,6 +409,7 @@ pub(crate) struct ConfigMcpArgs {
 pub(crate) enum ConfigMcpCommand {
     Servers(ConfigMcpServersArgs),
     TestConnection,
+    CallProof,
     AgentConfigs,
     Oauth(ConfigMcpOauthArgs),
 }
@@ -783,6 +784,7 @@ mod tests {
             &["aioncore", "config", "mcp", "servers", "toggle"],
             &["aioncore", "config", "mcp", "servers", "import"],
             &["aioncore", "config", "mcp", "test-connection"],
+            &["aioncore", "config", "mcp", "call-proof"],
             &["aioncore", "config", "mcp", "agent-configs"],
             &["aioncore", "config", "mcp", "oauth", "check-status"],
             &["aioncore", "config", "mcp", "oauth", "login"],

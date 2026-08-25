@@ -170,6 +170,30 @@ async fn fake_mcp_server_update(
     }))
 }
 
+async fn fake_mcp_call_proof(
+    State(capture): State<SharedCapture>,
+    axum::Json(payload): axum::Json<serde_json::Value>,
+) -> axum::Json<serde_json::Value> {
+    *capture.lock().unwrap() = Some(Capture {
+        payload: Some(payload),
+        ..Capture::default()
+    });
+    axum::Json(json!({
+        "success": true,
+        "data": {
+            "protocol_version": "2024-11-05",
+            "tool": "read_exact",
+            "authenticated_subject_sha256": "sha256:subject",
+            "arguments_sha256": "sha256:args",
+            "tools_sha256": "sha256:tools",
+            "result_sha256": "sha256:result",
+            "proof_sha256": "sha256:proof",
+            "result_bytes": 42,
+            "content_items": 1
+        }
+    }))
+}
+
 async fn fake_mcp_oauth_check_status(
     axum::Json(payload): axum::Json<serde_json::Value>,
 ) -> axum::Json<serde_json::Value> {
@@ -376,6 +400,7 @@ async fn spawn_config_probe_server(capture: SharedCapture) -> (String, tokio::ta
             "/api/mcp/servers/{server_id}",
             get(fake_mcp_server_get).put(fake_mcp_server_update),
         )
+        .route("/api/mcp/call-proof", post(fake_mcp_call_proof))
         .route("/api/mcp/oauth/check-status", post(fake_mcp_oauth_check_status))
         .route("/api/mcp/oauth/logout", post(fake_mcp_oauth_logout))
         .route("/api/providers", get(fake_provider_list).post(fake_provider_create))
@@ -486,6 +511,18 @@ async fn config_capabilities_prints_agent_readable_contract_without_runtime_env(
     assert_eq!(assistant_rule_write["input"], "stdin_json");
     assert_eq!(assistant_rule_write["readback"], true);
     assert_eq!(assistant_rule_write["selectors"], json!(["assistant_id"]));
+
+    let mcp_call_proof = domains
+        .iter()
+        .flat_map(|domain| domain["commands"].as_array().into_iter().flatten())
+        .find(|command| command["command"] == "config mcp call-proof")
+        .expect("mcp call-proof should be advertised");
+    assert_eq!(mcp_call_proof["input"], "stdin_json");
+    assert_eq!(mcp_call_proof["destructive"], true);
+    assert_eq!(
+        mcp_call_proof["redacted_fields"],
+        json!(["transport.headers", "transport.env", "arguments"])
+    );
 
     let cron_current_update = domains
         .iter()
@@ -1114,4 +1151,63 @@ fn builtin_config_skills_use_config_cli_not_python_or_cron_helper() {
     assert!(!cron.contains("cron-helper"));
     assert!(cron.contains("\"$AIONUI_HELPER_BIN\" config cron current list"));
     assert!(cron.contains("\"job_id\""));
+}
+
+#[tokio::test]
+async fn config_mcp_call_proof_posts_exact_request_and_prints_only_proof() {
+    let capture = Arc::new(Mutex::new(None));
+    let (base_url, handle) = spawn_config_probe_server(capture.clone()).await;
+    let mut child = config_command()
+        .args(["mcp", "call-proof"])
+        .env("AIONUI_BASE_URL", &base_url)
+        .env("AIONUI_CONVERSATION_ID", "conv-proof")
+        .env("AIONUI_USER_ID", "user-proof")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .as_mut()
+        .unwrap()
+        .write_all(
+            br#"{
+  "name": "fixture",
+  "transport": {
+    "type": "http",
+    "url": "https://mcp.example.test",
+    "headers": {"Authorization": "Bearer CLI_HEADER_SECRET"}
+  },
+  "tool": "read_exact",
+  "arguments": {"query": "CLI_ARGUMENT_SECRET"}
+}"#,
+        )
+        .await
+        .unwrap();
+    drop(child.stdin.take());
+
+    let output = child.wait_with_output().await.unwrap();
+    handle.abort();
+    assert!(
+        output.status.success(),
+        "mcp call-proof failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let captured = capture.lock().unwrap().take().expect("call-proof request captured");
+    let payload = captured.payload.unwrap();
+    assert_eq!(payload["tool"], "read_exact");
+    assert_eq!(payload["arguments"]["query"], "CLI_ARGUMENT_SECRET");
+    assert_eq!(
+        payload["transport"]["headers"]["Authorization"],
+        "Bearer CLI_HEADER_SECRET"
+    );
+
+    let stdout_text = String::from_utf8_lossy(&output.stdout);
+    assert!(!stdout_text.contains("CLI_ARGUMENT_SECRET"));
+    assert!(!stdout_text.contains("CLI_HEADER_SECRET"));
+    let stdout: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(stdout["data"]["tool"], "read_exact");
+    assert_eq!(stdout["data"]["proof_sha256"], "sha256:proof");
 }

@@ -236,3 +236,97 @@ async fn invalid_token_rejected() {
     let json = body_json(resp).await;
     assert_eq!(json["code"], "UNAUTHORIZED");
 }
+
+// ===========================================================================
+// Exact call proof: authenticated boundary, CSRF, and redacted validation
+// ===========================================================================
+
+#[tokio::test]
+async fn call_proof_requires_csrf_for_authenticated_post() {
+    let (mut app, services) = build_app().await;
+    let (token, _csrf) = setup_and_login(&mut app, &services, "admin", "StrongP@ss1").await;
+    let req = axum::http::Request::builder()
+        .method("POST")
+        .uri("/api/mcp/call-proof")
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {token}"))
+        .body(axum::body::Body::from(
+            serde_json::to_vec(&json!({
+                "name": "fixture",
+                "transport": {"type": "http", "url": "http://127.0.0.1:1/mcp"},
+                "tool": "read",
+                "arguments": {}
+            }))
+            .unwrap(),
+        ))
+        .unwrap();
+    let response = app.oneshot(req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn call_proof_rejects_invalid_request_without_reflecting_secrets() {
+    let (mut app, services) = build_app().await;
+    let (token, csrf) = setup_and_login(&mut app, &services, "admin", "StrongP@ss1").await;
+    let response = app
+        .oneshot(json_with_token(
+            "POST",
+            "/api/mcp/call-proof",
+            json!({
+                "name": "fixture",
+                "transport": {
+                    "type": "http",
+                    "url": "http://127.0.0.1:1/mcp",
+                    "headers": {"Authorization": "Bearer REQUEST_SECRET"}
+                },
+                "tool": "",
+                "arguments": {"secret": "ARGUMENT_SECRET"}
+            }),
+            &token,
+            &csrf,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = body_json(response).await;
+    assert_eq!(body["code"], "MCP_CALL_PROOF_INVALID_REQUEST");
+    let serialized = serde_json::to_string(&body).unwrap();
+    assert!(!serialized.contains("REQUEST_SECRET"));
+    assert!(!serialized.contains("ARGUMENT_SECRET"));
+}
+
+#[tokio::test]
+async fn unauthenticated_call_proof_is_rejected_at_security_boundary() {
+    let (app, _services) = build_app().await;
+    let req = axum::http::Request::builder()
+        .method("POST")
+        .uri("/api/mcp/call-proof")
+        .header("content-type", "application/json")
+        .body(axum::body::Body::from("{}"))
+        .unwrap();
+    let response = app.oneshot(req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn call_proof_rejects_missing_tool_field_before_transport() {
+    let (mut app, services) = build_app().await;
+    let (token, csrf) = setup_and_login(&mut app, &services, "admin", "StrongP@ss1").await;
+    let response = app
+        .oneshot(json_with_token(
+            "POST",
+            "/api/mcp/call-proof",
+            json!({
+                "name": "fixture",
+                "transport": {"type": "http", "url": "http://127.0.0.1:1/mcp"},
+                "arguments": {"secret": "MISSING_TOOL_SECRET"}
+            }),
+            &token,
+            &csrf,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = body_json(response).await;
+    assert!(!serde_json::to_string(&body).unwrap().contains("MISSING_TOOL_SECRET"));
+}
