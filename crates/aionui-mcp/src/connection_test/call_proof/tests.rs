@@ -59,14 +59,14 @@ fn rpc_error_and_tool_error_do_not_expose_payload() {
 #[test]
 fn oversized_arguments_are_rejected_before_transport() {
     let arguments = json!({"value": "x".repeat(MCP_CALL_PROOF_MAX_ARGUMENT_BYTES)});
-    let error = PreparedCall::new("server", "read", arguments, "user-1", "http").unwrap_err();
+    let error = PreparedCall::new("server", "read", arguments, "user-1", Some("run-1"), "http").unwrap_err();
     assert_eq!(error.code, McpCallProofErrorCode::ArgumentsTooLarge);
     assert_eq!(error.stage.as_str(), "validate");
 }
 
 #[test]
 fn proof_is_stable_and_contains_no_raw_result() {
-    let prepared = PreparedCall::new("server", "read", json!({"id": 7}), "user-1", "http").unwrap();
+    let prepared = PreparedCall::new("server", "read", json!({"id": 7}), "user-1", Some("run-1"), "http").unwrap();
     let tools = json!({"tools": [{"name": "read", "annotations": {"readOnlyHint": true}}]});
     let result = json!({"content": [{"type": "text", "text": "RESULT_SECRET_42"}]});
     let first = build_proof(&prepared, "2024-11-05".to_owned(), tools.clone(), result.clone()).unwrap();
@@ -99,12 +99,25 @@ fn unsupported_protocol_version_and_malformed_call_result_fail_closed() {
 
 #[test]
 fn proof_digest_binds_the_requested_server_name() {
-    let one = PreparedCall::new("server-one", "read", json!({"id": 7}), "user-1", "http").unwrap();
-    let two = PreparedCall::new("server-two", "read", json!({"id": 7}), "user-1", "http").unwrap();
+    let one = PreparedCall::new("server-one", "read", json!({"id": 7}), "user-1", Some("run-1"), "http").unwrap();
+    let two = PreparedCall::new("server-two", "read", json!({"id": 7}), "user-1", Some("run-1"), "http").unwrap();
     let tools = json!({"tools": [{"name": "read", "annotations": {"readOnlyHint": true}}]});
     let result = json!({"content": []});
     let first = build_proof(&one, "2024-11-05".to_owned(), tools.clone(), result.clone()).unwrap();
     let second = build_proof(&two, "2024-11-05".to_owned(), tools, result).unwrap();
+    assert_ne!(first.proof_sha256, second.proof_sha256);
+}
+
+#[test]
+fn proof_digest_binds_runtime_scope_and_exposes_recomputable_tuple() {
+    let one = PreparedCall::new("server", "read", json!({"id": 7}), "user-1", Some("run-one"), "http").unwrap();
+    let two = PreparedCall::new("server", "read", json!({"id": 7}), "user-1", Some("run-two"), "http").unwrap();
+    let tools = json!({"tools": [{"name": "read", "annotations": {"readOnlyHint": true}}]});
+    let result = json!({"content": []});
+    let first = build_proof(&one, "2024-11-05".to_owned(), tools.clone(), result.clone()).unwrap();
+    let second = build_proof(&two, "2024-11-05".to_owned(), tools, result).unwrap();
+    assert_eq!(first.server_name, "server");
+    assert_eq!(first.runtime_scope_id.as_deref(), Some("run-one"));
     assert_ne!(first.proof_sha256, second.proof_sha256);
 }
 
