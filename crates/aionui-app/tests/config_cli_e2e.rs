@@ -170,7 +170,7 @@ async fn fake_mcp_server_update(
     }))
 }
 
-async fn fake_mcp_call_proof(
+async fn fake_mcp_qualification_mint(
     State(capture): State<SharedCapture>,
     axum::Json(payload): axum::Json<serde_json::Value>,
 ) -> axum::Json<serde_json::Value> {
@@ -178,6 +178,16 @@ async fn fake_mcp_call_proof(
         payload: Some(payload),
         ..Capture::default()
     });
+    axum::Json(json!({
+        "success": true,
+        "data": {"capability": "cap-fixture", "expires_at_ms": 9999999999999_u64}
+    }))
+}
+
+async fn fake_mcp_qualification_consume(
+    axum::Json(payload): axum::Json<serde_json::Value>,
+) -> axum::Json<serde_json::Value> {
+    assert_eq!(payload, json!({"capability": "cap-fixture"}));
     axum::Json(json!({
         "success": true,
         "data": {
@@ -402,7 +412,8 @@ async fn spawn_config_probe_server(capture: SharedCapture) -> (String, tokio::ta
             "/api/mcp/servers/{server_id}",
             get(fake_mcp_server_get).put(fake_mcp_server_update),
         )
-        .route("/api/mcp/call-proof", post(fake_mcp_call_proof))
+        .route("/api/mcp/qualification-capabilities", post(fake_mcp_qualification_mint))
+        .route("/api/mcp/qualification-call", post(fake_mcp_qualification_consume))
         .route("/api/mcp/oauth/check-status", post(fake_mcp_oauth_check_status))
         .route("/api/mcp/oauth/logout", post(fake_mcp_oauth_logout))
         .route("/api/providers", get(fake_provider_list).post(fake_provider_create))
@@ -1164,6 +1175,7 @@ async fn config_mcp_call_proof_posts_exact_request_and_prints_only_proof() {
         .env("AIONUI_BASE_URL", &base_url)
         .env("AIONUI_CONVERSATION_ID", "conv-proof")
         .env("AIONUI_USER_ID", "user-proof")
+        .env("AIONUI_RUNTIME_TOKEN", "runtime-token-proof")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

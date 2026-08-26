@@ -38,6 +38,12 @@ pub trait IRuntimeTokenVerifier: Send + Sync {
     fn verify_conversation_helper(&self, token: &str, user_id: &str, conversation_id: &str) -> bool;
 }
 
+#[derive(Debug, Clone)]
+pub struct RuntimeConversationContext {
+    pub user_id: String,
+    pub conversation_id: String,
+}
+
 /// Authenticated user injected into request extensions by the auth middleware.
 ///
 /// Route handlers extract this from `request.extensions()` to identify
@@ -93,8 +99,21 @@ pub async fn auth_middleware(
     mut request: Request,
     next: Next,
 ) -> Result<Response, ApiError> {
-    // In local mode, skip JWT verification and inject a fixed default user.
+    // Local mode normally injects the fixed default user, but a conversation
+    // helper request must still traverse the runtime-token channel so routes
+    // can distinguish a live conversation-bound helper from an arbitrary local
+    // caller. Any partial runtime-header set fails closed in that channel.
     if state.identity_mode == AuthIdentityMode::Local {
+        let has_runtime_headers = [
+            RUNTIME_TOKEN_HEADER,
+            RUNTIME_USER_ID_HEADER,
+            RUNTIME_CONVERSATION_ID_HEADER,
+        ]
+        .iter()
+        .any(|name| request.headers().contains_key(*name));
+        if has_runtime_headers {
+            return runtime_token_channel(&state, request, next).await;
+        }
         request.extensions_mut().insert(CurrentUser::local_default());
         return Ok(next.run(request).await);
     }
@@ -192,6 +211,10 @@ async fn runtime_token_channel(state: &AuthState, mut request: Request, next: Ne
         ));
     }
 
+    request.extensions_mut().insert(RuntimeConversationContext {
+        user_id: user_id.clone(),
+        conversation_id,
+    });
     request.extensions_mut().insert(CurrentUser {
         id: user.id,
         username: user.username.unwrap_or_else(|| "external_user".to_string()),

@@ -6,6 +6,7 @@ pub mod adapters;
 pub mod connection_test;
 pub mod error;
 pub mod oauth_service;
+mod qualification;
 pub mod routes;
 pub mod service;
 pub mod session_injection;
@@ -20,6 +21,7 @@ pub use adapters::{
 pub use connection_test::{McpCallProofFailure, McpConnectionTestService};
 pub use error::McpError;
 pub use oauth_service::McpOAuthService;
+pub use qualification::McpQualificationService;
 pub use routes::{McpRouterState, mcp_routes};
 pub use service::McpConfigService;
 pub use session_injection::{

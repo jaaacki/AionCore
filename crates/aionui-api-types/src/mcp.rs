@@ -246,6 +246,30 @@ pub struct McpCallProofRequest {
     pub runtime_scope_id: Option<String>,
 }
 
+/// Runtime-bound qualification request. Authentication and conversation identity
+/// are derived exclusively from the conversation-helper runtime channel.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McpQualificationRequest {
+    pub name: String,
+    pub transport: McpTransport,
+    pub tool: String,
+    #[serde(default = "empty_json_object")]
+    pub arguments: serde_json::Value,
+    pub run_id: String,
+    pub machine_challenge: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McpQualificationCapabilityResult {
+    pub capability: String,
+    pub expires_at_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McpQualificationConsumeRequest {
+    pub capability: String,
+}
+
 /// Bounded, payload-free evidence from an exact read-only MCP tool call.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct McpCallProofResult {
@@ -259,8 +283,29 @@ pub struct McpCallProofResult {
     pub tools_sha256: String,
     pub result_sha256: String,
     pub proof_sha256: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub qualification: Option<McpQualificationBinding>,
     pub result_bytes: usize,
     pub content_items: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct McpQualificationBinding {
+    pub schema_version: u32,
+    pub capability_sha256: String,
+    pub authenticated_subject_sha256: String,
+    pub conversation_sha256: String,
+    pub runtime_id_sha256: String,
+    pub backend_pid: u32,
+    pub backend_start_time: u64,
+    pub backend_executable_sha256: String,
+    pub operation: String,
+    pub arguments_sha256: String,
+    pub run_id: String,
+    pub machine_challenge_sha256: String,
+    pub issued_at_ms: u64,
+    pub expires_at_ms: u64,
+    pub binding_sha256: String,
 }
 
 /// Machine-readable failure code for exact MCP call proof generation.
