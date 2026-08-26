@@ -125,7 +125,8 @@ pub use mcp::{
     BatchImportMcpServersRequest, CreateMcpServerRequest, DetectedMcpServerEntry, DetectedMcpServerResponse,
     ImportMcpServerRequest, MCP_CALL_PROOF_MAX_ARGUMENT_BYTES, MCP_CALL_PROOF_MAX_NAME_BYTES,
     MCP_CALL_PROOF_MAX_RESPONSE_BYTES, McpAuthMethod, McpCallProofErrorCode, McpCallProofRequest, McpCallProofResult,
-    McpConnectionTestErrorCode, McpConnectionTestResult, McpServerResponse, McpToolResponse, McpTransport,
+    McpConnectionTestErrorCode, McpConnectionTestResult, McpQualificationBinding, McpQualificationCapabilityResult,
+    McpQualificationConsumeRequest, McpQualificationRequest, McpServerResponse, McpToolResponse, McpTransport,
     OAuthCheckStatusRequest, OAuthLoginRequest, OAuthLoginResponse, OAuthLogoutRequest, OAuthStatusResponse,
     TestMcpConnectionRequest, UpdateMcpServerRequest,
 };

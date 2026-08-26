@@ -498,16 +498,7 @@ async fn run_mcp(client: &reqwest::Client, args: ConfigMcpArgs) -> Result<(), Co
             )
             .await
         }
-        ConfigMcpCommand::CallProof => {
-            run_payload_request(
-                client,
-                "config mcp call-proof",
-                Method::POST,
-                "/api/mcp/call-proof",
-                true,
-            )
-            .await
-        }
+        ConfigMcpCommand::CallProof => run_mcp_qualification_call(client).await,
         ConfigMcpCommand::AgentConfigs => {
             run_no_input_request(
                 client,
@@ -563,6 +554,42 @@ async fn run_mcp(client: &reqwest::Client, args: ConfigMcpArgs) -> Result<(), Co
             }
         },
     }
+}
+
+async fn run_mcp_qualification_call(client: &reqwest::Client) -> Result<(), ConfigError> {
+    let command = "config mcp call-proof";
+    let env = ConfigEnv::from_env(command)?;
+    let payload = read_stdin_payload(command)?;
+    let minted = request_json(
+        client,
+        &env,
+        Method::POST,
+        "/api/mcp/qualification-capabilities",
+        Some(payload),
+        command,
+    )
+    .await?;
+    let capability = minted
+        .get("capability")
+        .and_then(Value::as_str)
+        .filter(|v| !v.is_empty())
+        .ok_or_else(|| {
+            ConfigError::new(
+                ConfigErrorCode::ResponseJsonInvalid,
+                command,
+                "qualification capability response was invalid",
+            )
+        })?;
+    let proof = request_json(
+        client,
+        &env,
+        Method::POST,
+        "/api/mcp/qualification-call",
+        Some(json!({"capability": capability})),
+        command,
+    )
+    .await?;
+    print_envelope(proof, meta(None), command)
 }
 
 async fn run_mcp_server_update(client: &reqwest::Client) -> Result<(), ConfigError> {

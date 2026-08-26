@@ -519,11 +519,16 @@ pub fn build_mcp_state(services: &AppServices) -> McpRouterState {
     );
     let http_client = reqwest::Client::new();
 
+    let connection_test_service = McpConnectionTestService::new(http_client.clone(), services.event_bus.clone());
+    let conversation_repo: Arc<dyn aionui_db::IConversationRepository> = Arc::new(
+        aionui_db::SqliteConversationRepository::new(services.database.pool().clone()),
+    );
     McpRouterState {
         config_service: McpConfigService::new(repo.clone()),
         sync_service: McpSyncService::new(repo, adapters),
-        connection_test_service: McpConnectionTestService::new(http_client.clone(), services.event_bus.clone()),
+        connection_test_service: connection_test_service.clone(),
         oauth_service: aionui_mcp::McpOAuthService::new(oauth_token_repo, http_client),
+        qualification_service: aionui_mcp::McpQualificationService::new(conversation_repo, connection_test_service),
     }
 }
 

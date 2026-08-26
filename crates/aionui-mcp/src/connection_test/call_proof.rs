@@ -832,6 +832,7 @@ fn build_proof(
         tools_sha256,
         result_sha256,
         proof_sha256: sha256(&proof_bytes),
+        qualification: None,
         result_bytes: result_bytes.len(),
         content_items: result.get("content").and_then(Value::as_array).map_or(0, Vec::len),
     })

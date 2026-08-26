@@ -11,7 +11,7 @@ use tower::ServiceExt;
 
 use aionui_auth::{
     AuthIdentityMode, AuthState, CookieConfig, CurrentUser, IRuntimeTokenVerifier, JwtService, RateLimiter,
-    TokenPayload, api_rate_limit_middleware, auth_middleware, auth_rate_limit_middleware,
+    RuntimeConversationContext, TokenPayload, api_rate_limit_middleware, auth_middleware, auth_rate_limit_middleware,
     authenticated_action_rate_limit_middleware, csrf_middleware, security_headers_middleware,
 };
 use aionui_db::{IUserRepository, SqliteUserRepository, UserStatus, UserType, init_database_memory};
@@ -179,6 +179,29 @@ fn identity_echo_app(
         .route(
             "/whoami",
             get(|user: axum::Extension<CurrentUser>| async move { user.id.clone() }),
+        )
+        .route_layer(middleware::from_fn_with_state(state, auth_middleware))
+}
+
+fn runtime_context_echo_app(
+    jwt_service: Arc<JwtService>,
+    user_repo: Arc<dyn IUserRepository>,
+    identity_mode: AuthIdentityMode,
+    runtime_token_verifier: Option<Arc<dyn IRuntimeTokenVerifier>>,
+) -> Router {
+    let state = AuthState {
+        jwt_service,
+        user_repo,
+        identity_mode,
+        runtime_token_verifier,
+    };
+
+    Router::new()
+        .route(
+            "/runtime",
+            get(|runtime: axum::Extension<RuntimeConversationContext>| async move {
+                format!("{}:{}", runtime.user_id, runtime.conversation_id)
+            }),
         )
         .route_layer(middleware::from_fn_with_state(state, auth_middleware))
 }
@@ -607,6 +630,51 @@ fn helper_request(token: Option<&str>, user_id: &str, conversation_id: &str) -> 
         builder = builder.header("x-aionui-runtime-token", token);
     }
     builder.body(Body::empty()).unwrap()
+}
+
+#[tokio::test]
+async fn local_mode_runtime_headers_require_valid_channel_and_inject_context() {
+    let jwt_service = Arc::new(JwtService::new("middleware_test_secret".into()));
+    let db = init_database_memory().await.unwrap();
+    let repo = Arc::new(SqliteUserRepository::new(db.pool().clone())) as Arc<dyn IUserRepository>;
+    let app = runtime_context_echo_app(
+        jwt_service,
+        repo,
+        AuthIdentityMode::Local,
+        Some(Arc::new(MatchVerifier {
+            token: "tok-local",
+            user_id: "system_default_user",
+            conversation_id: "conv-local",
+        })),
+    );
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::get("/runtime")
+                .header("x-aionui-user-id", "system_default_user")
+                .header("x-aionui-conversation-id", "conv-local")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+
+    let resp = app
+        .oneshot(
+            Request::get("/runtime")
+                .header("x-aionui-user-id", "system_default_user")
+                .header("x-aionui-conversation-id", "conv-local")
+                .header("x-aionui-runtime-token", "tok-local")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    assert_eq!(&body[..], b"system_default_user:conv-local");
 }
 
 #[tokio::test]

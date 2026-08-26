@@ -9,16 +9,17 @@ use axum::routing::{get, post};
 
 use aionui_api_types::{
     ApiResponse, BatchImportMcpServersRequest, CreateMcpServerRequest, DetectedMcpServerResponse, ErrorResponse,
-    McpCallProofErrorCode, McpCallProofRequest, McpConnectionTestErrorCode, McpServerResponse, OAuthCheckStatusRequest,
-    OAuthLoginRequest, OAuthLoginResponse, OAuthLogoutRequest, OAuthStatusResponse, TestMcpConnectionRequest,
-    UpdateMcpServerRequest,
+    McpCallProofErrorCode, McpCallProofRequest, McpConnectionTestErrorCode, McpQualificationConsumeRequest,
+    McpQualificationRequest, McpServerResponse, OAuthCheckStatusRequest, OAuthLoginRequest, OAuthLoginResponse,
+    OAuthLogoutRequest, OAuthStatusResponse, TestMcpConnectionRequest, UpdateMcpServerRequest,
 };
-use aionui_auth::CurrentUser;
+use aionui_auth::{CurrentUser, RuntimeConversationContext};
 use aionui_common::ApiError;
 
 use crate::connection_test::McpConnectionTestService;
 use crate::error::McpError;
 use crate::oauth_service::McpOAuthService;
+use crate::qualification::{McpQualificationService, QualificationError};
 use crate::service::McpConfigService;
 use crate::sync_service::McpSyncService;
 use crate::types::McpServerTransport;
@@ -51,6 +52,7 @@ pub struct McpRouterState {
     pub sync_service: McpSyncService,
     pub connection_test_service: McpConnectionTestService,
     pub oauth_service: McpOAuthService,
+    pub qualification_service: McpQualificationService,
 }
 
 // ---------------------------------------------------------------------------
@@ -73,6 +75,11 @@ pub fn mcp_routes(state: McpRouterState) -> Router {
         // Connection test route
         .route("/api/mcp/test-connection", post(test_connection))
         .route("/api/mcp/call-proof", post(call_proof))
+        .route(
+            "/api/mcp/qualification-capabilities",
+            post(mint_qualification_capability),
+        )
+        .route("/api/mcp/qualification-call", post(consume_qualification_capability))
         // Agent config discovery route
         .route("/api/mcp/agent-configs", get(get_agent_configs))
         // OAuth routes
@@ -268,6 +275,72 @@ async fn call_proof(
     {
         Ok(proof) => Ok(Json(ApiResponse::ok(proof)).into_response()),
         Err(error) => Ok((
+            call_proof_failure_status(error.code()),
+            Json(ErrorResponse::new_with_details(
+                error.message(),
+                error.code().as_str(),
+                Some(error.details()),
+            )),
+        )
+            .into_response()),
+    }
+}
+
+async fn mint_qualification_capability(
+    State(state): State<McpRouterState>,
+    Extension(user): Extension<CurrentUser>,
+    runtime: Option<Extension<RuntimeConversationContext>>,
+    body: Result<Json<McpQualificationRequest>, JsonRejection>,
+) -> Result<Response, ApiError> {
+    let runtime = runtime
+        .ok_or_else(|| ApiError::Unauthorized("Conversation runtime authentication required".into()))?
+        .0;
+    if runtime.user_id != user.id {
+        return Err(ApiError::Unauthorized("Invalid runtime context".into()));
+    }
+    let Json(req) = body.map_err(ApiError::from)?;
+    match state
+        .qualification_service
+        .mint(&user.id, &runtime.conversation_id, req)
+        .await
+    {
+        Ok(result) => Ok(Json(ApiResponse::ok(result)).into_response()),
+        Err(error) => qualification_error_response(error),
+    }
+}
+
+async fn consume_qualification_capability(
+    State(state): State<McpRouterState>,
+    Extension(user): Extension<CurrentUser>,
+    runtime: Option<Extension<RuntimeConversationContext>>,
+    body: Result<Json<McpQualificationConsumeRequest>, JsonRejection>,
+) -> Result<Response, ApiError> {
+    let runtime = runtime
+        .ok_or_else(|| ApiError::Unauthorized("Conversation runtime authentication required".into()))?
+        .0;
+    if runtime.user_id != user.id {
+        return Err(ApiError::Unauthorized("Invalid runtime context".into()));
+    }
+    let Json(req) = body.map_err(ApiError::from)?;
+    match state
+        .qualification_service
+        .consume(&user.id, &runtime.conversation_id, &req.capability)
+        .await
+    {
+        Ok(result) => Ok(Json(ApiResponse::ok(result)).into_response()),
+        Err(error) => qualification_error_response(error),
+    }
+}
+
+fn qualification_error_response(error: QualificationError) -> Result<Response, ApiError> {
+    match error {
+        QualificationError::Invalid => Err(ApiError::BadRequest("Invalid qualification request".into())),
+        QualificationError::Unauthorized => Err(ApiError::Unauthorized(
+            "Invalid or consumed qualification capability".into(),
+        )),
+        QualificationError::Expired => Err(ApiError::Unauthorized("Expired qualification capability".into())),
+        QualificationError::Internal => Err(ApiError::Internal("Qualification service unavailable".into())),
+        QualificationError::Call(error) => Ok((
             call_proof_failure_status(error.code()),
             Json(ErrorResponse::new_with_details(
                 error.message(),

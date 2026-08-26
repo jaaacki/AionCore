@@ -716,6 +716,7 @@ dependencies = [
  "aionui-auth",
  "aionui-common",
  "aionui-db",
+ "aionui-process",
  "aionui-realtime",
  "aionui-runtime",
  "aionui-system",
@@ -736,6 +737,7 @@ dependencies = [
  "toml 0.8.23",
  "tracing",
  "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]
